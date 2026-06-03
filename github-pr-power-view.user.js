@@ -182,7 +182,7 @@
       box-shadow: 0 2px 8px rgba(0,0,0,.12);
     }
     #gpv-toggle-btn.original { background: #0969da; color: #fff; border-color: #0969da; }
-  `);
+  `;
 
   // ── helpers ──────────────────────────────────────────────────────────────────
   function scrollToEl(el) {
