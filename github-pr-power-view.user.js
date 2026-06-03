@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub PR Power View
 // @namespace    local.faisal
-// @version      2.2.0
+// @version      2.3.0
 // @description  Split-view PR: sticky quick-nav + conversation left, CI+commits+diff right. Toggle persists across reloads.
 // @match        https://github.com/*/*/pull/*
 // @grant        none
@@ -315,9 +315,34 @@
     </details>`;
   }
 
+  // ── GitHub PAT storage ───────────────────────────────────────────────────────
+  const GPV_TOKEN_KEY = 'gpv-github-token';
+
+  function getToken() { return localStorage.getItem(GPV_TOKEN_KEY) || ''; }
+
+  function promptSetToken(reason) {
+    const cur = getToken();
+    const t = window.prompt(
+      `GitHub PR Power View — set Personal Access Token\n\n` +
+      `${reason ? reason + '\n\n' : ''}` +
+      `Create one at: https://github.com/settings/tokens\n` +
+      `Required scope: repo (or public_repo for public repos only)\n\n` +
+      `Current: ${cur ? cur.slice(0, 8) + '…' : '(none)'}`,
+      cur
+    );
+    if (t === null) return; // cancelled
+    if (t.trim()) {
+      localStorage.setItem(GPV_TOKEN_KEY, t.trim());
+    } else {
+      localStorage.removeItem(GPV_TOKEN_KEY);
+    }
+  }
+
   // ── API fetchers ─────────────────────────────────────────────────────────────
   function apiFetch(url) {
-    return fetch(url, { credentials: 'include' });
+    const token = getToken();
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    return fetch(url, { headers });
   }
 
   async function fetchAll(url) {
@@ -453,6 +478,11 @@
     btGroup.appendChild(navItem('⬇', 'Bottom', '', '', () => {
       const convo = document.querySelector('[class*="Conversations-module__layout"]');
       if (convo) convo.scrollTop = convo.scrollHeight; else window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }));
+    const hasToken = !!getToken();
+    btGroup.appendChild(navItem(hasToken ? '🔑' : '🔓', 'API Token', hasToken ? 'set' : 'not set', hasToken ? 'green' : 'amber', () => {
+      promptSetToken('');
+      bootPowerView();
     }));
     nav.appendChild(btGroup);
 
@@ -643,7 +673,7 @@
     if (!info) return;
     try {
       const [prData, commits, files] = await Promise.all([
-        apiFetch(`https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.pr}`).then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(new Error(`API ${r.status}: ${d.message || r.statusText}`)))),
+        apiFetch(`https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.pr}`).then(r => r.json().then(d => { if (d.message && !d.number) throw new Error(d.message); return d; })),
         fetchAll(`https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.pr}/commits`),
         fetchAll(`https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.pr}/files`),
       ]);
@@ -657,6 +687,14 @@
       applyLayout();
     } catch (e) {
       console.warn('[GPV] boot error:', e.message);
+      const isRateLimit = e.message?.toLowerCase().includes('rate limit');
+      if (isRateLimit) {
+        promptSetToken('GitHub API rate limit hit (anonymous = 60 req/hr). Add a PAT to get 5000 req/hr.');
+        try {
+          // retry once after token set
+          await bootPowerView(); return;
+        } catch { /* fall through to empty render */ }
+      }
       buildNav(null);
       buildRightCol([], [], [], e.message);
       applyLayout();
