@@ -581,19 +581,19 @@
       powerOn = !powerOn;
       localStorage.setItem(STORAGE_KEY, powerOn ? 'on' : 'off');
       if (powerOn) {
-        document.getElementById('gpv-nav') && (document.getElementById('gpv-nav').style.display = '');
-        document.getElementById('gpv-diff-col') && (document.getElementById('gpv-diff-col').style.display = '');
+        // Re-run full boot — elements may not exist if page loaded in off state
         document.querySelectorAll('style[id^="gpv"]').forEach(s => s.disabled = false);
-        const pane = document.querySelector('[class*="prc-PageLayout-PaneWrapper"]');
-        if (pane) pane.style.cssText = 'display:none!important;';
-        applyLayout();
+        ['gpv-nav', 'gpv-diff-col', 'gpv-sidebar-popup'].forEach(id => document.getElementById(id)?.remove());
+        const content = document.querySelector('[class*="prc-PageLayout-PageLayoutContent"]');
+        const convo   = document.querySelector('[class*="Conversations-module__layout"]');
+        if (content) content.style.cssText = '';
+        if (convo)   convo.style.cssText   = '';
         btn.textContent = '⊡ Original view';
         btn.classList.remove('original');
+        bootPowerView(); // full rebuild
       } else {
-        document.getElementById('gpv-nav') && (document.getElementById('gpv-nav').style.display = 'none');
-        document.getElementById('gpv-diff-col') && (document.getElementById('gpv-diff-col').style.display = 'none');
+        ['gpv-nav', 'gpv-diff-col', 'gpv-sidebar-popup'].forEach(id => document.getElementById(id)?.remove());
         document.querySelectorAll('style[id^="gpv"]').forEach(s => s.disabled = true);
-        // Restore GitHub layout
         const content = document.querySelector('[class*="prc-PageLayout-PageLayoutContent"]');
         const convo   = document.querySelector('[class*="Conversations-module__layout"]');
         const pane    = document.querySelector('[class*="prc-PageLayout-PaneWrapper"]');
@@ -610,30 +610,21 @@
     return powerOn;
   }
 
-  // ── boot ─────────────────────────────────────────────────────────────────────
-  async function boot() {
-    if (!isPRConvo()) return;                          // only on main PR conversation tab
-    if (document.getElementById('gpv-diff-col')) return; // already booted
-
+  // ── core power view builder (called by boot and toggle-on) ──────────────────
+  async function bootPowerView() {
     const info = prInfo();
     if (!info) return;
-
-    const powerOn = buildToggle();
-    if (!powerOn) return; // user previously toggled off — respect that
-
     try {
       const [prData, commits, files] = await Promise.all([
         fetch(`https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.pr}`).then(r => r.json()),
         fetchAll(`https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.pr}/commits`),
         fetchAll(`https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.pr}/files`),
       ]);
-
       let checkRuns = [];
       if (prData?.head?.sha) {
         const d = await fetch(`https://api.github.com/repos/${info.owner}/${info.repo}/commits/${prData.head.sha}/check-runs?per_page=100`).then(r => r.json());
         checkRuns = d.check_runs || [];
       }
-
       buildNav(checkRuns.length ? checkRuns : null);
       buildRightCol(commits, files, checkRuns);
       applyLayout();
@@ -643,6 +634,15 @@
       buildRightCol([], [], []);
       applyLayout();
     }
+  }
+
+  // ── boot ─────────────────────────────────────────────────────────────────────
+  async function boot() {
+    if (!isPRConvo()) return;
+    if (document.getElementById('gpv-diff-col')) return; // already booted
+    const powerOn = buildToggle();
+    if (!powerOn) return; // user toggled off — show button only, don't build
+    await bootPowerView();
   }
 
   // Boot + re-boot on Turbo navigation
