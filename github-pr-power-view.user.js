@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub PR Power View
 // @namespace    local.faisal
-// @version      2.3.0
+// @version      2.4.0
 // @description  Split-view PR: sticky quick-nav + conversation left, CI+commits+diff right. Toggle persists across reloads.
 // @match        https://github.com/*/*/pull/*
 // @grant        none
@@ -248,6 +248,12 @@
     if (socket)  { socket.style.overflow = ''; socket.style.height = ''; }
     document.documentElement.style.overflowX = '';
     document.body.style.overflowX = '';
+    // Restore container width — GitHub PR pages are full-width by default now;
+    // force back to GitHub's standard 1280px max so original view feels narrow again.
+    document.querySelectorAll('.container-xl').forEach(el => {
+      el.style.setProperty('max-width', '1280px', 'important');
+      el.style.padding = '';
+    });
   }
 
   // ── apply layout ─────────────────────────────────────────────────────────────
@@ -288,6 +294,9 @@
     const pane = document.querySelector('[class*="prc-PageLayout-PaneWrapper"]');
     if (pane) pane.style.cssText = 'display:none!important;';
 
+    // Clear any inline max-width we set during restore, let gpv-style-main CSS take over
+    document.querySelectorAll('.container-xl').forEach(el => el.style.removeProperty('max-width'));
+
     // Suppress horizontal scroll from any GitHub-injected iframes
     document.documentElement.style.overflowX = 'hidden';
     document.body.style.overflowX = 'hidden';
@@ -323,11 +332,13 @@
   function promptSetToken(reason) {
     const cur = getToken();
     const t = window.prompt(
-      `GitHub PR Power View — set Personal Access Token\n\n` +
+      `GitHub PR Power View — GitHub Personal Access Token\n\n` +
       `${reason ? reason + '\n\n' : ''}` +
-      `Create one at: https://github.com/settings/tokens\n` +
-      `Required scope: repo (or public_repo for public repos only)\n\n` +
-      `Current: ${cur ? cur.slice(0, 8) + '…' : '(none)'}`,
+      `Use a CLASSIC token (starts with ghp_) — NOT fine-grained.\n` +
+      `Fine-grained tokens require org approval for org repos.\n\n` +
+      `Create at: github.com/settings/tokens → "Tokens (classic)"\n` +
+      `Required scope: repo  (covers private + public repos)\n\n` +
+      `Current: ${cur ? cur.slice(0, 8) + '…' : '(none)'}  — leave blank to clear`,
       cur
     );
     if (t === null) return; // cancelled
@@ -687,13 +698,15 @@
       applyLayout();
     } catch (e) {
       console.warn('[GPV] boot error:', e.message);
-      const isRateLimit = e.message?.toLowerCase().includes('rate limit');
-      if (isRateLimit) {
-        promptSetToken('GitHub API rate limit hit (anonymous = 60 req/hr). Add a PAT to get 5000 req/hr.');
-        try {
-          // retry once after token set
-          await bootPowerView(); return;
-        } catch { /* fall through to empty render */ }
+      const isRateLimit  = e.message?.toLowerCase().includes('rate limit');
+      const isNotFound   = e.message?.toLowerCase().includes('not found');
+      const needsToken   = isRateLimit || isNotFound;
+      if (needsToken) {
+        const reason = isRateLimit
+          ? 'GitHub API rate limit hit (anonymous = 60 req/hr). Add a PAT for 5000 req/hr.'
+          : 'Repo returned "Not Found" — likely private or token lacks access.\nUse a classic PAT (ghp_…) with "repo" scope.';
+        promptSetToken(reason);
+        try { await bootPowerView(); return; } catch { /* fall through */ }
       }
       buildNav(null);
       buildRightCol([], [], [], e.message);
@@ -707,9 +720,9 @@
     if (document.getElementById('gpv-diff-col')) return; // already booted
     const powerOn = buildToggle();
     if (!powerOn) {
-      // Off state — disable our CSS so original GitHub layout fully restores
       const s = document.getElementById('gpv-style-main');
       if (s) s.disabled = true;
+      restoreOriginalLayout();
       return;
     }
     await bootPowerView();
