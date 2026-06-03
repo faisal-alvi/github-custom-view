@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         GitHub PR Power View
 // @namespace    local.faisal
-// @version      2.0.0
+// @version      2.1.0
 // @description  Split-view PR: sticky quick-nav + conversation left, CI+commits+diff right. Toggle persists across reloads.
 // @match        https://github.com/*/*/pull/*
-// @grant        GM_addStyle
+// @grant        none
 // @run-at       document-end
 // ==/UserScript==
 
@@ -23,8 +23,11 @@
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  // ── CSS ──────────────────────────────────────────────────────────────────────
-  GM_addStyle(`
+  // ── CSS — injected manually so we can disable it on toggle-off ──────────────
+  const _gpvStyle = document.createElement('style');
+  _gpvStyle.id = 'gpv-style-main';
+  document.head.appendChild(_gpvStyle);
+  _gpvStyle.textContent = `
     .container-xl { max-width: 100% !important; padding: 0 8px !important; }
     html, body { overflow-x: hidden !important; }
 
@@ -170,7 +173,7 @@
 
     /* toggle button */
     #gpv-toggle-btn {
-      position: fixed; top: 10px; right: 16px; z-index: 9999;
+      position: fixed; bottom: 16px; right: 16px; z-index: 9999;
       padding: 5px 12px; border-radius: 6px; font-size: 12px;
       cursor: pointer; font-weight: 600;
       border: 1px solid var(--borderColor-default,#d0d7de);
@@ -222,6 +225,24 @@
     const labels = [...item.querySelectorAll('.IssueLabel,.Label')].map(l => l.innerText?.trim()).filter(Boolean);
     if (labels.length) return labels.slice(0, 3).join(', ');
     return 'None';
+  }
+
+  // ── restore original GitHub layout (used by toggle-off and tryBoot) ─────────
+  function restoreOriginalLayout() {
+    const content = document.querySelector('[class*="prc-PageLayout-PageLayoutContent"]');
+    const convo   = document.querySelector('[class*="Conversations-module__layout"]');
+    const pane    = document.querySelector('[class*="prc-PageLayout-PaneWrapper"]');
+    const inner   = document.querySelector('[class*="prc-PageLayout-ContentWrapper"]');
+    const root    = convo?.querySelector('[class*="prc-PageLayout-PageLayoutRoot"]');
+    const socket  = convo?.querySelector('.js-socket-channel');
+    if (content) content.style.cssText = '';
+    if (convo)   convo.style.cssText   = '';
+    if (pane)    pane.style.cssText    = '';
+    if (inner)   inner.style.cssText   = '';
+    if (root)    root.style.cssText    = '';
+    if (socket)  { socket.style.overflow = ''; socket.style.height = ''; }
+    document.documentElement.style.overflowX = '';
+    document.body.style.overflowX = '';
   }
 
   // ── apply layout ─────────────────────────────────────────────────────────────
@@ -582,26 +603,16 @@
       localStorage.setItem(STORAGE_KEY, powerOn ? 'on' : 'off');
       if (powerOn) {
         // Re-run full boot — elements may not exist if page loaded in off state
-        document.querySelectorAll('style[id^="gpv"]').forEach(s => s.disabled = false);
+        document.getElementById('gpv-style-main').disabled = false;
         ['gpv-nav', 'gpv-diff-col', 'gpv-sidebar-popup'].forEach(id => document.getElementById(id)?.remove());
-        const content = document.querySelector('[class*="prc-PageLayout-PageLayoutContent"]');
-        const convo   = document.querySelector('[class*="Conversations-module__layout"]');
-        if (content) content.style.cssText = '';
-        if (convo)   convo.style.cssText   = '';
+        restoreOriginalLayout();
         btn.textContent = '⊡ Original view';
         btn.classList.remove('original');
         bootPowerView(); // full rebuild
       } else {
         ['gpv-nav', 'gpv-diff-col', 'gpv-sidebar-popup'].forEach(id => document.getElementById(id)?.remove());
-        document.querySelectorAll('style[id^="gpv"]').forEach(s => s.disabled = true);
-        const content = document.querySelector('[class*="prc-PageLayout-PageLayoutContent"]');
-        const convo   = document.querySelector('[class*="Conversations-module__layout"]');
-        const pane    = document.querySelector('[class*="prc-PageLayout-PaneWrapper"]');
-        if (content) content.style.cssText = '';
-        if (convo)   convo.style.cssText   = '';
-        if (pane)    pane.style.cssText    = '';
-        document.documentElement.style.overflowX = '';
-        document.body.style.overflowX = '';
+        document.getElementById('gpv-style-main').disabled = true;
+        restoreOriginalLayout();
         btn.textContent = '⚡ Power view';
         btn.classList.add('original');
       }
@@ -649,11 +660,7 @@
   function tryBoot() {
     if (!isPRConvo()) return;
     ['gpv-nav','gpv-diff-col','gpv-sidebar-popup','gpv-toggle-btn'].forEach(id => document.getElementById(id)?.remove());
-    // Reset layout overrides before re-booting
-    const content = document.querySelector('[class*="prc-PageLayout-PageLayoutContent"]');
-    const convo   = document.querySelector('[class*="Conversations-module__layout"]');
-    if (content) content.style.cssText = '';
-    if (convo)   convo.style.cssText   = '';
+    restoreOriginalLayout();
     setTimeout(boot, 700);
   }
 
