@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub PR Power View
 // @namespace    local.faisal
-// @version      2.1.0
+// @version      2.2.0
 // @description  Split-view PR: sticky quick-nav + conversation left, CI+commits+diff right. Toggle persists across reloads.
 // @match        https://github.com/*/*/pull/*
 // @grant        none
@@ -316,11 +316,15 @@
   }
 
   // ── API fetchers ─────────────────────────────────────────────────────────────
+  function apiFetch(url) {
+    return fetch(url, { credentials: 'include' });
+  }
+
   async function fetchAll(url) {
     let items = [], page = 1;
     while (true) {
-      const r = await fetch(`${url}${url.includes('?') ? '&' : '?'}per_page=100&page=${page}`);
-      if (!r.ok) throw new Error(`API ${r.status}`);
+      const r = await apiFetch(`${url}${url.includes('?') ? '&' : '?'}per_page=100&page=${page}`);
+      if (!r.ok) throw new Error(`API ${r.status} ${r.statusText}`);
       const d = await r.json();
       if (!Array.isArray(d) || !d.length) break;
       items = items.concat(d);
@@ -458,7 +462,7 @@
   }
 
   // ── build right column ───────────────────────────────────────────────────────
-  function buildRightCol(commits, files, checkRuns) {
+  function buildRightCol(commits, files, checkRuns, errorMsg) {
     document.getElementById('gpv-diff-col')?.remove();
     const content = document.querySelector('[class*="prc-PageLayout-PageLayoutContent"]');
     if (!content) return;
@@ -486,6 +490,13 @@
     topBtn.addEventListener('click', () => col.scrollTo({ top: 0, behavior: 'smooth' }));
     toolbar.appendChild(topBtn);
     col.appendChild(toolbar);
+
+    if (errorMsg) {
+      const errDiv = document.createElement('div');
+      errDiv.style.cssText = 'padding:12px;background:#ffebe9;border-bottom:2px solid #ffd7d5;font-size:12px;color:#cf222e';
+      errDiv.innerHTML = `<strong>⚠ Failed to load PR data:</strong> ${esc(errorMsg)}<br><span style="opacity:.7;font-size:11px">Check browser console (F12) for details. If "403 rate limited", reload — GitHub rate limits anonymous API calls.</span>`;
+      col.appendChild(errDiv);
+    }
 
     // CI section
     const ciDiv = document.createElement('div');
@@ -581,7 +592,7 @@
       const annotationsMap = {};
       await Promise.all(failed.map(async r => {
         try {
-          const d = await fetch(`https://api.github.com/repos/${o}/${rp}/check-runs/${r.id}/annotations`).then(x => x.json());
+          const d = await apiFetch(`https://api.github.com/repos/${o}/${rp}/check-runs/${r.id}/annotations`).then(x => x.json());
           annotationsMap[r.id] = Array.isArray(d) ? d : [];
         } catch { annotationsMap[r.id] = []; }
       }));
@@ -632,13 +643,13 @@
     if (!info) return;
     try {
       const [prData, commits, files] = await Promise.all([
-        fetch(`https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.pr}`).then(r => r.json()),
+        apiFetch(`https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.pr}`).then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(new Error(`API ${r.status}: ${d.message || r.statusText}`)))),
         fetchAll(`https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.pr}/commits`),
         fetchAll(`https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.pr}/files`),
       ]);
       let checkRuns = [];
       if (prData?.head?.sha) {
-        const d = await fetch(`https://api.github.com/repos/${info.owner}/${info.repo}/commits/${prData.head.sha}/check-runs?per_page=100`).then(r => r.json());
+        const d = await apiFetch(`https://api.github.com/repos/${info.owner}/${info.repo}/commits/${prData.head.sha}/check-runs?per_page=100`).then(r => r.json());
         checkRuns = d.check_runs || [];
       }
       buildNav(checkRuns.length ? checkRuns : null);
@@ -647,7 +658,7 @@
     } catch (e) {
       console.warn('[GPV] boot error:', e.message);
       buildNav(null);
-      buildRightCol([], [], []);
+      buildRightCol([], [], [], e.message);
       applyLayout();
     }
   }
