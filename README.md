@@ -25,7 +25,8 @@ A Tampermonkey userscript that transforms GitHub PR pages into a split-view layo
 
 | Action | How |
 |---|---|
-| Toggle Power View on/off | **⊡ Original view** button (top-right corner) |
+| Toggle Power View on/off | **⊡ Original view** / **⚡ Power view** button (bottom-right) |
+| Set / change API token | Click **`🔑 API Token`** at the bottom of the Quick Nav |
 | Jump to a section | Click any item in the left quick-nav |
 | View PR details (reviewers etc.) | Click any item in the **PR Details** nav section |
 | Filter files in diff | Type in the filter box in the right column |
@@ -61,9 +62,24 @@ A Tampermonkey userscript that transforms GitHub PR pages into a split-view layo
 └──────────────────────────────────┴──────────────────────────────────┘
 ```
 
+## GitHub API Authentication
+
+The script calls the GitHub REST API to fetch commits, files, and CI data. GitHub imposes a **60 req/hr anonymous limit** and returns **404 for private repos** without auth.
+
+**Add a Personal Access Token (PAT) for reliable access:**
+
+1. Go to `github.com/settings/tokens` → **Tokens (classic)** → Generate new token
+2. Select scope: **`repo`** (covers public and private repos you have access to)
+   > Use a **classic token** (`ghp_…`). Fine-grained tokens require org admin approval for org repos and will not work.
+3. On first load, if the API fails the script prompts you to paste your token
+4. To update or clear the token later: click **`🔑 API Token`** at the bottom of the Quick Nav
+
+Token is stored in `localStorage` under key `gpv-github-token` — never sent anywhere except `api.github.com`.
+
 ## Notes
 
-- Uses the **GitHub REST API** (no auth required for public repos; cookies handle auth for private repos)
-- No external library dependencies — diff rendering is custom, no CDN calls
+- No external library dependencies — diff rendering is custom, no CDN calls (GitHub CSP blocks CDN scripts)
 - CSP-safe — all event handlers use `addEventListener`, no inline `onclick`
-- Toggle state saved in `localStorage` — persists across reloads until manually toggled back
+- Toggle state saved in `localStorage` (`gpv-power-view` key) — persists across reloads
+- Only runs on the PR **conversation** tab — skips `/files`, `/commits`, `/checks`
+- See [CHANGELOG.md](./CHANGELOG.md) for full version history and architecture decisions
