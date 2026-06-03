@@ -23,6 +23,22 @@
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // ── Toggle button CSS — permanent, never disabled ────────────────────────────
+  const _gpvToggleStyle = document.createElement('style');
+  _gpvToggleStyle.textContent = `
+    #gpv-toggle-btn {
+      position: fixed; bottom: 16px; right: 16px; z-index: 99999;
+      padding: 5px 12px; border-radius: 6px; font-size: 12px;
+      cursor: pointer; font-weight: 600;
+      border: 1px solid var(--borderColor-default,#d0d7de);
+      background: var(--bgColor-default,#fff);
+      color: var(--fgColor-default,#24292f);
+      box-shadow: 0 2px 8px rgba(0,0,0,.12);
+    }
+    #gpv-toggle-btn.original { background: #0969da; color: #fff; border-color: #0969da; }
+  `;
+  document.head.appendChild(_gpvToggleStyle);
+
   // ── CSS — injected manually so we can disable it on toggle-off ──────────────
   const _gpvStyle = document.createElement('style');
   _gpvStyle.id = 'gpv-style-main';
@@ -171,17 +187,6 @@
     }
     .gpv-popup-close { border: none; background: none; cursor: pointer; font-size: 14px; opacity: .6; padding: 0; }
 
-    /* toggle button */
-    #gpv-toggle-btn {
-      position: fixed; bottom: 16px; right: 16px; z-index: 9999;
-      padding: 5px 12px; border-radius: 6px; font-size: 12px;
-      cursor: pointer; font-weight: 600;
-      border: 1px solid var(--borderColor-default,#d0d7de);
-      background: var(--bgColor-default,#fff);
-      color: var(--fgColor-default,#24292f);
-      box-shadow: 0 2px 8px rgba(0,0,0,.12);
-    }
-    #gpv-toggle-btn.original { background: #0969da; color: #fff; border-color: #0969da; }
   `;
 
   // ── helpers ──────────────────────────────────────────────────────────────────
