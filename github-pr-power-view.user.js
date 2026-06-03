@@ -657,7 +657,12 @@
     if (!isPRConvo()) return;
     if (document.getElementById('gpv-diff-col')) return; // already booted
     const powerOn = buildToggle();
-    if (!powerOn) return; // user toggled off — show button only, don't build
+    if (!powerOn) {
+      // Off state — disable our CSS so original GitHub layout fully restores
+      const s = document.getElementById('gpv-style-main');
+      if (s) s.disabled = true;
+      return;
+    }
     await bootPowerView();
   }
 
